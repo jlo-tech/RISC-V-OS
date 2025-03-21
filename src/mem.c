@@ -1,59 +1,173 @@
 #include <mem.h>
+#include <list.h>
+#include <mutex.h>
 
-static u8 mem_map[MEM_SIZE / PAGE_SIZE];
+struct mem_chunk 
+{
+    usize size;
+    struct list_anchor anchor;
+};
 
-void init_mem() {
+static volatile reg_t mem_lock = 0;
 
-  /* mark every page in memory as free */
-  for(u64 i = 0; i < MEM_SIZE / PAGE_SIZE; i++) {
-    mem_map[i] = PAGE_FREE;
-  }
+static struct list_anchor mem_used __attribute__((aligned(4096)));
+static struct list_anchor mem_free __attribute__((aligned(4096)));
 
-  /* mark kernel pages as used */
-  u64 kernel_size = (u64*)&kernel_end - (u64*)&kernel_start;
-  u64 iterations = (kernel_size % PAGE_SIZE == 0) ? (kernel_size / PAGE_SIZE) : ((kernel_size / PAGE_SIZE) + 1);
-
-  for(u64 i = 0; i < iterations; i++) {
-    mem_map[i] = PAGE_USED;
-  }
-}
-
-void* alloc_mem() {
-
-  /* iterate over mem_map until we find a free page */
-  u64 i = 0;
-  while(i < (MEM_SIZE / PAGE_SIZE)) {
-    if(mem_map[i] == PAGE_FREE) {
-      /* dont forget to mark page as used */
-      mem_map[i] = PAGE_USED;
-      /* calculate return address */
-      return (void*)(RAM + PAGE_SIZE * i);
+void* align4k(void *ptr)
+{
+    u64 p = (u64)ptr;
+    if((p & 0xFFF) != 0)
+    {
+        p &= ~0xFFFUL;
+        p += 0x1000;
     }
-    i++;
-  }
-
-  /* return null pointer, NOTE: always do null checks! */
-  return (void*) 0;
+    return (void*)p;
 }
 
-void* zalloc_mem() {
+void init_mem()
+{
+    // Nothing used yet
+    mem_used.next = &mem_used;
+    mem_used.prev = &mem_used;
 
-  void* n = alloc_mem();
-
-  memset(n, 0, PAGE_SIZE);
-
-  return n;
+    // Mark free space
+    struct mem_chunk *mf = (struct mem_chunk*)&kernel_end;
+    mf->size = MEM_SIZE - ((u64)(&kernel_end) - (u64)RAM);
+    mf->anchor.next = &mem_free;
+    mf->anchor.prev = &mem_free;
+    mem_free.next = &mf->anchor;
+    mem_free.prev = &mf->anchor;
 }
 
-void free_mem(void* page) {
+void* kalloc(usize size)
+{
+    // Align allocations
+    // NOTE: PAGE_SIZE is space reserved for struct mem_chunk and to keep things aligned 
+    size = (usize)align4k((void*)size + PAGE_SIZE);
 
-  /* calculate position in mem_map */
-  u64 pos = ((u64)page - RAM) / PAGE_SIZE;
+    lock(&mem_lock);
 
-  /* check that we do not write out of bounds */
-  if(pos < MEM_SIZE / PAGE_SIZE) {
-    mem_map[pos] = PAGE_FREE;
-  }
+    bool found = false;
+    struct mem_chunk *curr = LIST_ELEMENT(mem_free.next, struct mem_chunk, anchor);
+    
+    do 
+    {
+        if(curr->size >= size + sizeof(struct mem_chunk))
+        {
+            found = true;
+            break;
+        }
+
+        curr = LIST_NEXT_ELEMENT(curr, struct mem_chunk, anchor);
+    } 
+    while(curr->anchor.next != &mem_free);
+
+    if(!found)
+    {
+        // Out of memory
+        return NULL;
+    }
+    
+    void *retptr = NULL;
+    struct mem_chunk *new = curr;
+
+    if(new->size > size)
+    {
+        // Split chunk 
+
+        // Remove from free list
+        LIST_REMOVE(&new->anchor);
+    
+        // Insert back free space
+        struct mem_chunk *old = curr + size;
+        old->size = curr->size - size;
+        LIST_APPEND(&mem_free, &old->anchor);
+
+        // Mark as used
+        new->size = size;
+        LIST_APPEND(&mem_used, &new->anchor);
+    }
+    else
+    {
+        // Remove from free list
+        LIST_REMOVE(&new->anchor);
+        // Insert into used list
+        LIST_APPEND(&mem_used, &new->anchor);
+    }
+
+    // Return new chunk
+    retptr = new;
+
+    unlock(&mem_lock);
+
+    return retptr + PAGE_SIZE;
+}
+
+/*
+    Frees block and tries to merge with others
+*/
+static void try_merge(struct mem_chunk *addr)
+{
+    bool found = false;
+    struct mem_chunk *curr = LIST_ELEMENT(mem_free.next, struct mem_chunk, anchor);
+
+    do
+    {
+        if((curr + curr->size) == addr)
+        {
+            // Extend previous chunk
+            curr->size += addr->size;
+        }
+
+        if(addr + addr->size == curr)
+        {
+            // Extend current chunk
+            addr->size += curr->size;
+            // Remove old chunk 
+            LIST_REMOVE(&curr->anchor);
+            break;
+        }
+
+        curr = LIST_NEXT_ELEMENT(curr, struct mem_chunk, anchor);
+    } 
+    while(curr->anchor.next != &mem_used);
+
+    // Insert free chunk when we couldn't merged or when we extended the "addr" chunk in the loop above
+    LIST_APPEND(&mem_free, &addr->anchor);
+}
+
+void kfree(void *addr)
+{
+    bool found = false;
+    struct mem_chunk *curr = LIST_ELEMENT(mem_used.next, struct mem_chunk, anchor);
+    
+    do 
+    {
+        if(curr == (addr - PAGE_SIZE))
+        {
+            found = true;
+            break;
+        }
+
+        curr = LIST_NEXT_ELEMENT(curr, struct mem_chunk, anchor);
+    } 
+    while(curr->anchor.next != &mem_used);
+
+    if(found)
+    {
+        // Remove from used list
+        LIST_REMOVE(&curr->anchor);
+
+        // Search free list and try to merge
+        try_merge(curr);
+    }
+}
+
+void* zkalloc(usize size)
+{
+    void *ret = kalloc(size);
+    memset(ret, 0, size);
+    return ret;
 }
 
 /* standard memory operations */
@@ -70,7 +184,7 @@ void memcpy(void* dest, void* src, usize size) {
 
 void memset(void* dest, u8 val, usize size) {
 
-  char* d = (char*)dest;
+  unsigned char* d = (unsigned char*)dest;
 
   for(u64 i = 0; i < size; i++) {
     d[i] = val;

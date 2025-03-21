@@ -56,7 +56,7 @@
 	andi t0, t0, 3		# reconstruct value
 	slli t0, t0, 11		# ...
 
-	li t1, 3		# create bit mask
+	li t1, 3			# create bit mask
 	slli t1, t1, 11
 
 	csrr t2, mstatus	# set mpp bits to zero in t2(mstatus)
@@ -139,12 +139,10 @@ handle_traps:
 	mret
 
 
-.global switch_task
+.global _switch_task
 
 # pass control immediatly to task
-# NOTE: on next task scheduling call the current_task's cpu_state will be overwritte
-# NOTE: with the state of the task started by this function
-switch_task:
+_switch_task:
 
 	# align pointer
 	addi t6, a0, context_size

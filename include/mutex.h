@@ -3,7 +3,7 @@
 
 #include <types.h>
 
-void lock_mutex(reg_t* lock_value);
-void unlock_mutex(reg_t* lock_value);
+void lock(volatile reg_t* lock_value);
+void unlock(volatile reg_t* lock_value);
 
 #endif

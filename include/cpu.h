@@ -2,8 +2,10 @@
 #define CPU_H
 
 #include <types.h>
+#include <limits.h>
 
 #define NUMBER_OF_HARTS 4
+#define HART_ANY ULLONG_MAX
 
 #define MACHINE_MODE    3
 #define SUPERVISOR_MODE 1

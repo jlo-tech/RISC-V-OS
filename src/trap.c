@@ -5,6 +5,8 @@
 #include <console.h>
 #include <syscall.h>
 
+extern void resolve_ipi();
+
 /* enable interrupts */
 void init_traps() {
 
@@ -42,11 +44,12 @@ cpu_t* handle_trq(cpu_t* cpu_state, reg_t mcause, reg_t mtval) {
 
   //putf_console("MSTATUS: %b \n", read_mstatus());
   //putf_console("Code: %b \n", mcause);
+  //putf_console("Addr: %b \n", mtval);
 
   /* mcause seems to be 32 Bit long */
   if(mcause & (1 << 31)) {
 
-    putf_console("I: %d \n", code);
+    //putf_console("I: %d \n", code);
 
     /* interrupt */
     switch(code) {
@@ -56,9 +59,7 @@ cpu_t* handle_trq(cpu_t* cpu_state, reg_t mcause, reg_t mtval) {
         /* clear ipi */
         putf_console("IPI Trap \n");
         resolve_ipi();
-
-        /* TODO: schedule tasks on different harts */
-
+        // TODO: Do something useful
         return cpu_state;
 
       /* handle timer irq */

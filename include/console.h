@@ -3,7 +3,6 @@
 
 #include <types.h>
 
-/* TODO: Replace by own file */
 #include <stdarg.h>
 
 void putc_console(char c);

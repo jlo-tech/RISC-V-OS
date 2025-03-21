@@ -4,13 +4,6 @@ static void* pte2addr(pte_t e) {
   return (void*)(((e >> 10) & 0xFFFFFFFFFFF) << 12);
 }
 
-void satp_page(void* root) {
-
-  write_satp(((usize)8 << 60) | (((usize)root >> 12) & 0xFFFFFFFFFFF));
-
-  asm volatile("sfence.vma");
-}
-
 void map_page(ptb_t* dir, void* virt, void* phys, u8 flags) {
 
   pte_t entry;
@@ -24,7 +17,7 @@ void map_page(ptb_t* dir, void* virt, void* phys, u8 flags) {
     /* check if entry is valid */
     if((entry & 1) == 0) {
       /* alloc new page and let entry point to */
-      ptb_t* p = (ptb_t*)zalloc_mem();
+      ptb_t* p = (ptb_t*)align4k(kalloc(PAGE_SIZE << 1));
       /* construct new entry */
       entry = (((usize)p >> 12) << 10) | (usize)0x1;
       /* save entry in page table */
@@ -52,28 +45,11 @@ void map_range(ptb_t* dir, void* virt, void* phys, usize len, u8 flags) {
   }
 }
 
-void* virt2phys(ptb_t* dir, void* virt) {
+void satp_page(void* root) 
+{
+    asm volatile("sfence.vma");
 
-  pte_t entry;
+    write_satp(((reg_t)8 << 60) | (((reg_t)root >> 12) & 0xFFFFFFFFFFF));
 
-  /* walk 3 level page table */
-  for(u64 i = 0; i < 2; i++) {
-
-    /* get entry */
-    entry = dir->entries[((usize)virt >> (30 - (i * 9))) & 0x1FF];
-
-    /* check if entry is valid */
-    if((entry & 1) == 0) {
-      return NULL;
-    }
-
-    /* set new directory */
-    dir = (ptb_t*)pte2addr(entry);
-  }
-
-  /* pull final entry */
-  entry = dir->entries[((usize)virt >> 12) & 0x1FF];
-
-  /* add page offset */
-  return (void*)((usize)pte2addr(entry) | ((usize)virt & 0xFFF));
+    asm volatile("sfence.vma");
 }

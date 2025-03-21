@@ -22,4 +22,10 @@ typedef unsigned long reg_t;
 /* usize type */
 typedef unsigned long usize;
 
+/* boolean type */
+typedef unsigned int bool;
+
+#define false 0
+#define true 1
+
 #endif

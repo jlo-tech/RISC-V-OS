@@ -6,11 +6,11 @@
 .section .text
 
 _start:
-	# verify that only hart 0 startsup
-    	csrr t0, mhartid
+	# read hart id
+    csrr t0, mhartid
 
-    	# multiply by 4096
-	slli t0, t0 , 12
+    # multiply by 8192
+	slli t0, t0 , 13
 
 	# set up stack
 	la sp, stack_start
@@ -24,5 +24,5 @@ _start:
 .section .bss
 
 stack_end:
-.fill 16384, 0
+.fill 32768, 0
 stack_start:

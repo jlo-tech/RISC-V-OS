@@ -8,17 +8,15 @@
 #define MEM_SIZE  268435456 /* 256M */
 #define PAGE_SIZE 4096      /* 4K   */
 
-#define PAGE_FREE 0
-#define PAGE_USED 1
-
 extern void kernel_start;
 extern void kernel_end;
 
 void init_mem();
+void* kalloc(usize size);
+void* zkalloc(usize size);
+void kfree(void *addr);
 
-void* alloc_mem();
-void* zalloc_mem();
-void free_mem(void* page);
+void* align4k(void *ptr);
 
 /* standard memory operations */
 void memcpy(void* dest, void* src, usize size);

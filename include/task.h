@@ -2,6 +2,7 @@
 #define TASK_H
 
 #include <cpu.h>
+#include <list.h>
 #include <paging.h>
 
 /* task structure */
@@ -18,14 +19,19 @@ typedef struct task {
   ptb_t* page_table;
 
   /* next task in list */
-  struct task* next;
+  struct list_anchor anchor;
 
 } __attribute__((packed)) task_t;
 
-extern void switch_task(cpu_t* cpu_state);
+extern void _switch_task(cpu_t* cpu_state);
 
 cpu_t* schedule_task(cpu_t* old_cpu_state);
 
-void add_task(task_t* task);
+void init_tasks();
+
+void deploy_task(task_t *task);
+void dispose_task(task_t *task);
+
+void switch_task(task_t *task);
 
 #endif
